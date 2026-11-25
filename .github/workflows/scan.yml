@@ -2,9 +2,8 @@ name: Kalshi scan
 
 on:
   schedule:
-    # GitHub cron is UTC. 13:37 UTC = 8:37am ET, 00:37 UTC = 7:37pm ET (during EST; one hour later in EDT).
-    - cron: "37 13 * * *"
-    - cron: "37 0 * * *"
+    # Hourly at :37 (UTC minute = ET minute, so daylight saving doesn't matter).
+    - cron: "37 * * * *"
   workflow_dispatch:
     inputs:
       test_alert:
@@ -31,9 +30,10 @@ jobs:
       - name: Run scanner
         id: scan
         run: |
-          python kalshi_scan.py --min-edge 3 --no-spreads --max-days 90 --top 5 > flags.txt
+          python kalshi_scan.py --min-edge 3 --no-spreads --max-days 90 --min-profit 10 --top 10 > flags.txt
           cat flags.txt
           if [ -s flags.txt ]; then echo "found=true" >> "$GITHUB_OUTPUT"; else echo "found=false" >> "$GITHUB_OUTPUT"; fi
+          if grep -q "SIGNIFICANT" flags.txt; then echo "significant=true" >> "$GITHUB_OUTPUT"; else echo "significant=false" >> "$GITHUB_OUTPUT"; fi
 
       - name: Save results for Claude
         if: always()
@@ -52,13 +52,13 @@ jobs:
           git push || true
 
       - name: Notify via ntfy
-        if: steps.scan.outputs.found == 'true' || inputs.test_alert
+        if: steps.scan.outputs.significant == 'true' || inputs.test_alert
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
           if [ -z "$NTFY_TOPIC" ]; then echo "NTFY_TOPIC secret not set; skipping alert"; exit 0; fi
-          if [ -s flags.txt ]; then
-            BODY="$(cat flags.txt)
+          if grep -q "SIGNIFICANT" flags.txt; then
+            BODY="$(grep -A2 SIGNIFICANT flags.txt)
 
           Top-of-book prices only; check depth and confirm brackets list every outcome."
           else

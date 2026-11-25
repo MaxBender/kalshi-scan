@@ -1,12 +1,12 @@
 # kalshi-scan
 
-Read-only scanner for Kalshi pricing inconsistencies. Runs twice a day on GitHub Actions and pushes alerts to your phone via [ntfy](https://ntfy.sh).
+Read-only scanner for Kalshi pricing inconsistencies. Runs hourly on GitHub Actions and pushes alerts to your phone via [ntfy](https://ntfy.sh).
 
 ## What it flags
 - **Bracket arb**: mutually exclusive outcomes whose YES asks sum below $1 (or bids above $1) after estimated fees.
 - **Ladder inversion**: a higher "above X" strike bid above a lower strike's ask.
 
-Only flags with ≥3¢ estimated edge on markets closing within 90 days are sent, top 5 per run. Flags with a gap over 25¢ stay in the list but get a live secondary review (still open, ≥10 contracts at the quoted price, traded in the last 24h) and are labeled REVIEW PASSED or REVIEW FAILED. Nothing is sent when nothing qualifies.
+Flags with ≥3¢ estimated edge on markets closing within 90 days are listed (top 10). Each gets a live review (still open, ≥10 contracts at the quoted prices, traded in the last 24h) and a profit estimate (edge × executable size). Only flags that pass review with ≥$10 estimated profit are marked **SIGNIFICANT**, and only those trigger alerts. Nothing is sent when nothing qualifies.
 
 ## Alerts
 Each run writes `results/latest.txt`. A Claude scheduled task reads it ~15 minutes later and sends a push notification through the Claude app if anything is flagged. ntfy (below) is optional.
@@ -20,7 +20,6 @@ Each run writes `results/latest.txt`. A Claude scheduled task reads it ~15 minut
 - Top-of-book prices only; depth may be tiny.
 - Fee model is an approximation of Kalshi's taker fee.
 - Bracket flags assume the listed outcomes are exhaustive; check the event rules.
-- GitHub pauses scheduled workflows after 60 days without repo activity.
 - Data flags, not trading advice. The scanner never places orders.
 
 Run locally: `pip install requests && python kalshi_scan.py --min-edge 3 --no-spreads`

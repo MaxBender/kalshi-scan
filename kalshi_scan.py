@@ -104,7 +104,7 @@ def review(session, legs):
             m = _get(session, f"/markets/{ticker}")["market"]
             book = _get(session, f"/markets/{ticker}/orderbook").get("orderbook") or {}
         except Exception as e:
-            return False, [f"{ticker}: lookup failed ({e})"]
+            return False, [f"{ticker}: lookup failed ({e})"], 0
         if m.get("status") not in ("active", "open"):
             ok = False; notes.append(f"{ticker} status {m.get('status')}")
         if (m.get("close_time") or "9999") <= now:
@@ -121,7 +121,7 @@ def review(session, legs):
         time.sleep(0.1)
     size = min(sizes) if sizes else 0
     notes.append(f"executable size ~{size:g} contracts")
-    return ok, notes
+    return ok, notes, size
 
 
 def active(markets):
@@ -222,6 +222,8 @@ def main():
     ap.add_argument("--max-days", type=int, default=0,
                     help="only flag markets closing within N days (0 = no limit)")
     ap.add_argument("--top", type=int, default=0, help="keep only the top N flags (0 = all)")
+    ap.add_argument("--min-profit", type=float, default=10,
+                    help="dollars of estimated profit (edge x executable size) to mark SIGNIFICANT")
     args = ap.parse_args()
 
     events = fetch_events()
@@ -245,18 +247,25 @@ def main():
     if args.top:
         hits = sorted(hits, key=lambda h: -h[2])[:args.top]
 
+    # Live review of every arb flag: still open, real size at the quoted prices,
+    # recently traded. Profit estimate = edge x executable size.
     session = requests.Session()
-    reviews = {}
-    for i, h in enumerate(hits):
-        if h[0] != "WIDE_SPREAD" and h[2] > MAX_PLAUSIBLE_EDGE:
-            reviews[i] = review(session, h[4])
+    reviews = {i: review(session, h[4]) for i, h in enumerate(hits) if h[0] != "WIDE_SPREAD"}
 
+    n_sig = 0
     for i, (kind, ev, edge, detail, legs) in enumerate(hits):
-        print(f"[{kind}] edge={edge}c  {ev.get('event_ticker')}  {ev.get('title','')[:70]}\n    {detail}")
+        tag = ""
         if i in reviews:
-            ok, notes = reviews[i]
-            verdict = "REVIEW PASSED" if ok else "REVIEW FAILED"
-            print(f"    BIG GAP (> {MAX_PLAUSIBLE_EDGE}c) {verdict}: {'; '.join(notes)}")
+            ok, notes, size = reviews[i]
+            profit = edge * size / 100
+            if ok and profit >= args.min_profit:
+                tag = f" SIGNIFICANT ~${profit:,.0f}"
+                n_sig += 1
+        print(f"[{kind}]{tag} edge={edge}c  {ev.get('event_ticker')}  {ev.get('title','')[:70]}\n    {detail}")
+        if i in reviews:
+            big = f"BIG GAP (> {MAX_PLAUSIBLE_EDGE}c) " if edge > MAX_PLAUSIBLE_EDGE else ""
+            print(f"    {big}{'REVIEW PASSED' if ok else 'REVIEW FAILED'}: {'; '.join(notes)}; est. profit ~${profit:,.2f}")
+    print(f"{n_sig} significant (review passed, >= ${args.min_profit:g} est. profit)", file=sys.stderr)
     print(f"\n{len(hits)} flags across {len(events)} open events", file=sys.stderr)
 
     if args.csv:
