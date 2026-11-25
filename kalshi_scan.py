@@ -22,10 +22,12 @@ Notes:
     (ceil(0.07 * C * P * (1-P)) per order). Verify against current fee schedule.
   - This is a data tool, not trading advice.
 """
-import argparse, csv, math, sys, time
+import argparse, csv, math, re, sys, time
 import requests
 
 BASE = "https://api.elections.kalshi.com/trade-api/v2"
+MIN_EXHAUSTIVE_SUM = 85   # cents; bracket asks summing below this are treated as non-exhaustive
+MAX_PLAUSIBLE_EDGE = 25   # cents; bigger "edges" are almost always data artifacts
 
 
 def cents(m, side):
@@ -79,7 +81,9 @@ def scan_brackets(ev, min_edge):
     asks = [cents(m, "yes_ask") for m in ms]
     bids = [cents(m, "yes_bid") for m in ms]
     # Buy every YES: one must pay $1 (assumes outcomes are exhaustive!)
-    if all(a and 0 < a < 100 for a in asks):
+    # If the asks sum far below $1, the list almost certainly isn't exhaustive
+    # (e.g. "Top Netflix show" listing 10 of many shows), so skip it.
+    if all(a and 0 < a < 100 for a in asks) and sum(asks) >= MIN_EXHAUSTIVE_SUM:
         cost = sum(asks) + sum(fee_cents(a) for a in asks)
         edge = 100 - cost
         if edge >= min_edge:
@@ -95,11 +99,25 @@ def scan_brackets(ev, min_edge):
     return out
 
 
+def underlying(m):
+    """Group key for a market: last ticker segment with its trailing strike removed.
+    e.g. ...-DAL54 -> DAL, ...-DEN53 -> DEN, ...-T50 -> T, ...-MIA -> MIA."""
+    return re.sub(r"[\d.]+$", "", m["ticker"].split("-")[-1])
+
+
 def scan_ladder(ev):
     out = []
-    ms = [m for m in active(ev.get("markets", []))
-          if m.get("strike_type") in ("greater", "greater_or_equal")
-          and m.get("floor_strike") is not None]
+    groups = {}
+    for m in active(ev.get("markets", [])):
+        if m.get("strike_type") in ("greater", "greater_or_equal") and m.get("floor_strike") is not None:
+            groups.setdefault(underlying(m), []).append(m)
+    for ms in groups.values():
+        out += _scan_ladder_group(ev, ms)
+    return out
+
+
+def _scan_ladder_group(ev, ms):
+    out = []
     ms.sort(key=lambda m: float(m["floor_strike"]))
     # A ladder needs distinct strikes; equal strikes usually mean different
     # underlyings (e.g. one market per city), which are not comparable.
@@ -131,6 +149,8 @@ def main():
     ap.add_argument("--min-edge", type=int, default=0, help="min edge in cents for arbs")
     ap.add_argument("--no-spreads", action="store_true")
     ap.add_argument("--csv")
+    ap.add_argument("--allow-huge", action="store_true",
+                    help=f"keep flags with edge > {MAX_PLAUSIBLE_EDGE}c (usually artifacts)")
     ap.add_argument("--top", type=int, default=0, help="keep only the top N flags (0 = all)")
     args = ap.parse_args()
 
@@ -141,6 +161,9 @@ def main():
         hits += [h for h in scan_ladder(ev) if h[2] >= args.min_edge]
         if not args.no_spreads:
             hits += scan_spreads(ev)
+
+    if not args.allow_huge:
+        hits = [h for h in hits if h[0] == "WIDE_SPREAD" or h[2] <= MAX_PLAUSIBLE_EDGE]
 
     order = {"BRACKET_BUY_ALL_YES": 0, "BRACKET_SELL_ALL_YES": 0, "LADDER_INVERSION": 1, "WIDE_SPREAD": 2}
     hits.sort(key=lambda h: (order[h[0]], -h[2]))
