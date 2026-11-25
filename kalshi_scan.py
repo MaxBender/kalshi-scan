@@ -38,6 +38,14 @@ def closes(ms):
     return t[:10] if t != "9999" else "?"
 
 
+def num(m, field):
+    """Numeric field that may come as `field` or `field_fp` / `field_dollars` strings."""
+    for k in (field, f"{field}_fp"):
+        if m.get(k) is not None:
+            return float(m[k])
+    return 0.0
+
+
 def cents(m, side):
     """Return price in cents for yes_bid / yes_ask, handling old and new field formats."""
     v = m.get(side)
@@ -218,7 +226,12 @@ def selftest():
     """Run the live review on liquid markets; depth should be well above zero."""
     s = requests.Session()
     ms = _get(s, "/markets?status=open&limit=1000").get("markets", [])
-    ms = sorted(ms, key=lambda m: -(m.get("volume_24h") or 0))[:3]
+    ms = [m for m in ms if not m["ticker"].startswith("KXMVE")]  # skip combo markets
+    ms = sorted(ms, key=lambda m: -num(m, "volume_24h"))[:3]
+    if ms:
+        import json
+        print("RAW MARKET:", json.dumps(ms[0])[:1500])
+        print("RAW BOOK:", json.dumps(_get(s, f"/markets/{ms[0]['ticker']}/orderbook"))[:1500])
     bad = 0
     for m in ms:
         a, b = cents(m, "yes_ask"), cents(m, "yes_bid")
