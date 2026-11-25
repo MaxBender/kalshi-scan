@@ -6,7 +6,7 @@ Read-only scanner for Kalshi pricing inconsistencies. Runs twice a day on GitHub
 - **Bracket arb**: mutually exclusive outcomes whose YES asks sum below $1 (or bids above $1) after estimated fees.
 - **Ladder inversion**: a higher "above X" strike bid above a lower strike's ask.
 
-Only flags with ≥3¢ estimated edge are sent, top 5 per run. Nothing is sent when nothing qualifies.
+Only flags with ≥3¢ estimated edge on markets closing within 90 days are sent, top 5 per run. Flags with a gap over 25¢ stay in the list but get a live secondary review (still open, ≥10 contracts at the quoted price, traded in the last 24h) and are labeled REVIEW PASSED or REVIEW FAILED. Nothing is sent when nothing qualifies.
 
 ## Alerts
 Each run writes `results/latest.txt`. A Claude scheduled task reads it ~15 minutes later and sends a push notification through the Claude app if anything is flagged. ntfy (below) is optional.

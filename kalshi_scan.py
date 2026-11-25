@@ -27,7 +27,8 @@ import requests
 
 BASE = "https://api.elections.kalshi.com/trade-api/v2"
 MIN_EXHAUSTIVE_SUM = 85   # cents; bracket asks summing below this are treated as non-exhaustive
-MAX_PLAUSIBLE_EDGE = 25   # cents; bigger "edges" are almost always data artifacts
+MAX_PLAUSIBLE_EDGE = 25   # cents; bigger "edges" get a secondary review (usually artifacts)
+MIN_REVIEW_DEPTH = 10     # contracts that must be available at the quoted price
 CATCH_ALL = re.compile(r"\b(other|others|anyone else|someone else|none|no one|nobody|field|"
                        r"none of the above|not listed)\b|-OTH\b|-OTHER\b", re.I)
 
@@ -74,6 +75,55 @@ def fetch_events():
     return events
 
 
+def _get(session, path):
+    for _ in range(3):
+        r = session.get(f"{BASE}{path}", timeout=20)
+        if r.status_code == 429:
+            time.sleep(2)
+            continue
+        r.raise_for_status()
+        return r.json()
+    raise RuntimeError(f"rate limited on {path}")
+
+
+def _levels(book, side):
+    """Order book bids for 'yes' or 'no' as [(price_cents, qty)], old or new field format."""
+    lv = book.get(side)
+    if lv is None and book.get(f"{side}_dollars") is not None:
+        lv = [(round(float(p) * 100), float(q)) for p, q in book[f"{side}_dollars"]]
+    return [(int(p), float(q)) for p, q in (lv or [])]
+
+
+def review(session, legs):
+    """Secondary review for big-gap flags: re-check each leg live.
+    Returns (passed, notes)."""
+    notes, ok, sizes = [], True, []
+    now = dt.datetime.now(dt.timezone.utc).isoformat()
+    for ticker, action, price in legs:
+        try:
+            m = _get(session, f"/markets/{ticker}")["market"]
+            book = _get(session, f"/markets/{ticker}/orderbook").get("orderbook") or {}
+        except Exception as e:
+            return False, [f"{ticker}: lookup failed ({e})"]
+        if m.get("status") not in ("active", "open"):
+            ok = False; notes.append(f"{ticker} status {m.get('status')}")
+        if (m.get("close_time") or "9999") <= now:
+            ok = False; notes.append(f"{ticker} past close time")
+        if not (m.get("volume_24h") or 0):
+            ok = False; notes.append(f"{ticker} no trades in 24h")
+        if action == "buy_yes":   # buying YES at a = hitting NO bids at 100-a or better
+            depth = sum(q for p, q in _levels(book, "no") if p >= 100 - price)
+        else:                     # selling YES at b = hitting YES bids at b or better
+            depth = sum(q for p, q in _levels(book, "yes") if p >= price)
+        sizes.append(depth)
+        if depth < MIN_REVIEW_DEPTH:
+            ok = False; notes.append(f"{ticker} only {depth:g} contracts at {price}c")
+        time.sleep(0.1)
+    size = min(sizes) if sizes else 0
+    notes.append(f"executable size ~{size:g} contracts")
+    return ok, notes
+
+
 def active(markets):
     return [m for m in markets if m.get("status") in (None, "active", "open")]
 
@@ -100,14 +150,16 @@ def scan_brackets(ev, min_edge):
         edge = 100 - cost
         if edge >= min_edge:
             out.append(("BRACKET_BUY_ALL_YES", ev, edge,
-                        f"{len(ms)} legs, sum asks={sum(asks)}c, w/ fees={cost}c, closes {closes(ms)}"))
+                        f"{len(ms)} legs, sum asks={sum(asks)}c, w/ fees={cost}c, closes {closes(ms)}",
+                        [(m["ticker"], "buy_yes", a) for m, a in zip(ms, asks)]))
     # Sell every YES at bids: you pay out $1 on exactly one
     if all(b and 0 < b < 100 for b in bids):
         take = sum(bids) - sum(fee_cents(b) for b in bids)
         edge = take - 100
         if edge >= min_edge:
             out.append(("BRACKET_SELL_ALL_YES", ev, edge,
-                        f"{len(ms)} legs, sum bids={sum(bids)}c, net of fees={take}c, closes {closes(ms)}"))
+                        f"{len(ms)} legs, sum bids={sum(bids)}c, net of fees={take}c, closes {closes(ms)}",
+                        [(m["ticker"], "sell_yes", b) for m, b in zip(ms, bids)]))
     return out
 
 
@@ -142,7 +194,8 @@ def _scan_ladder_group(ev, ms):
             edge = hi_bid - lo_ask - fee_cents(hi_bid) - fee_cents(lo_ask)
             out.append(("LADDER_INVERSION", ev, edge,
                         f">{hi['floor_strike']} bid {hi_bid}c vs >{lo['floor_strike']} ask {lo_ask}c "
-                        f"[{hi['ticker']} / {lo['ticker']}] closes {closes([hi, lo])}"))
+                        f"[{hi['ticker']} / {lo['ticker']}] closes {closes([hi, lo])}",
+                        [(hi["ticker"], "sell_yes", hi_bid), (lo["ticker"], "buy_yes", lo_ask)]))
     return out
 
 
@@ -152,7 +205,7 @@ def scan_spreads(ev, min_vol=1000, min_spread=15):
         b, a = cents(m, "yes_bid"), cents(m, "yes_ask")
         if b and a and (m.get("volume") or 0) >= min_vol and a - b >= min_spread:
             out.append(("WIDE_SPREAD", ev, a - b,
-                        f"{m['ticker']} bid {b}c / ask {a}c, vol {m.get('volume')}"))
+                        f"{m['ticker']} bid {b}c / ask {a}c, vol {m.get('volume')}", []))
     return out
 
 
@@ -163,8 +216,6 @@ def main():
     ap.add_argument("--csv")
     ap.add_argument("--max-days", type=int, default=0,
                     help="only flag markets closing within N days (0 = no limit)")
-    ap.add_argument("--allow-huge", action="store_true",
-                    help=f"keep flags with edge > {MAX_PLAUSIBLE_EDGE}c (usually artifacts)")
     ap.add_argument("--top", type=int, default=0, help="keep only the top N flags (0 = all)")
     args = ap.parse_args()
 
@@ -183,23 +234,31 @@ def main():
             return (not m) or m.group(1) <= cutoff
         hits = [h for h in hits if h[0] == "WIDE_SPREAD" or soon(h)]
 
-    if not args.allow_huge:
-        hits = [h for h in hits if h[0] == "WIDE_SPREAD" or h[2] <= MAX_PLAUSIBLE_EDGE]
 
     order = {"BRACKET_BUY_ALL_YES": 0, "BRACKET_SELL_ALL_YES": 0, "LADDER_INVERSION": 1, "WIDE_SPREAD": 2}
     hits.sort(key=lambda h: (order[h[0]], -h[2]))
     if args.top:
         hits = sorted(hits, key=lambda h: -h[2])[:args.top]
 
-    for kind, ev, edge, detail in hits:
+    session = requests.Session()
+    reviews = {}
+    for i, h in enumerate(hits):
+        if h[0] != "WIDE_SPREAD" and h[2] > MAX_PLAUSIBLE_EDGE:
+            reviews[i] = review(session, h[4])
+
+    for i, (kind, ev, edge, detail, legs) in enumerate(hits):
         print(f"[{kind}] edge={edge}c  {ev.get('event_ticker')}  {ev.get('title','')[:70]}\n    {detail}")
+        if i in reviews:
+            ok, notes = reviews[i]
+            verdict = "REVIEW PASSED" if ok else "REVIEW FAILED"
+            print(f"    BIG GAP (> {MAX_PLAUSIBLE_EDGE}c) {verdict}: {'; '.join(notes)}")
     print(f"\n{len(hits)} flags across {len(events)} open events", file=sys.stderr)
 
     if args.csv:
         with open(args.csv, "w", newline="") as f:
             w = csv.writer(f)
             w.writerow(["kind", "edge_cents", "event_ticker", "title", "detail"])
-            for kind, ev, edge, detail in hits:
+            for kind, ev, edge, detail, legs in hits:
                 w.writerow([kind, edge, ev.get("event_ticker"), ev.get("title"), detail])
 
 
