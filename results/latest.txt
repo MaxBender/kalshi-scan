@@ -1,13 +1,13 @@
-scanned_at_utc: 2026-11-25T04:14:13Z
+scanned_at_utc: 2026-11-25T04:17:09Z
 status: success
 ---
-[LADDER_INVERSION] edge=96c  KXNBA1HTEAMTOTAL-26NOV24DALDEN  Dallas vs Denver: 1st Half Team Total
-    >53.5 bid 99c vs >52.5 ask 1c [KXNBA1HTEAMTOTAL-26NOV24DALDEN-DAL54 / KXNBA1HTEAMTOTAL-26NOV24DALDEN-DEN53]
-[LADDER_INVERSION] edge=96c  KXNBA1HTEAMTOTAL-26NOV24DALDEN  Dallas vs Denver: 1st Half Team Total
-    >55.5 bid 99c vs >54.5 ask 1c [KXNBA1HTEAMTOTAL-26NOV24DALDEN-DAL56 / KXNBA1HTEAMTOTAL-26NOV24DALDEN-DEN55]
-[LADDER_INVERSION] edge=96c  KXNBA1HTEAMTOTAL-26NOV24DALDEN  Dallas vs Denver: 1st Half Team Total
-    >57.5 bid 99c vs >56.5 ask 1c [KXNBA1HTEAMTOTAL-26NOV24DALDEN-DAL58 / KXNBA1HTEAMTOTAL-26NOV24DALDEN-DEN57]
-[LADDER_INVERSION] edge=83c  KXNCAAMBSPREAD-26NOV25NEWIS  Northeastern vs Wisconsin: Spread
-    >4.5 bid 90c vs >1.5 ask 5c [KXNCAAMBSPREAD-26NOV25NEWIS-WIS5 / KXNCAAMBSPREAD-26NOV25NEWIS-NE2]
-[BRACKET_BUY_ALL_YES] edge=78c  KXNETFLIXRANKSHOW-26NOV30  Top US Netflix Show this week?
-    10 legs, sum asks=12c, w/ fees=22c
+[BRACKET_BUY_ALL_YES] edge=7c  KXRPRESPRIMARY-28WA  Washington Republican presidential primary winner?
+    5 legs, sum asks=85c, w/ fees=93c
+[BRACKET_BUY_ALL_YES] edge=7c  KXRPRESPRIMARY-28VT  Vermont Republican presidential primary winner?
+    5 legs, sum asks=85c, w/ fees=93c
+[BRACKET_BUY_ALL_YES] edge=7c  KXRPRESPRIMARY-28SD  South Dakota Republican presidential primary winner?
+    5 legs, sum asks=85c, w/ fees=93c
+[BRACKET_BUY_ALL_YES] edge=7c  KXRPRESPRIMARY-28MA  Massachusetts Republican presidential primary winner?
+    5 legs, sum asks=85c, w/ fees=93c
+[BRACKET_BUY_ALL_YES] edge=7c  KXNEXTCPDSUPT-27JUL01  Who will be the next Chicago Police Superintendent?
+    3 legs, sum asks=88c, w/ fees=93c
