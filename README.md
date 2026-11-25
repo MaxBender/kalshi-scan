@@ -8,7 +8,10 @@ Read-only scanner for Kalshi pricing inconsistencies. Runs twice a day on GitHub
 
 Only flags with ≥3¢ estimated edge are sent, top 5 per run. Nothing is sent when nothing qualifies.
 
-## Setup
+## Alerts
+Each run writes `results/latest.txt`. A Claude scheduled task reads it ~15 minutes later and sends a push notification through the Claude app if anything is flagged. ntfy (below) is optional.
+
+## Optional ntfy setup
 1. Install the ntfy app and subscribe to a long, random topic name.
 2. In this repo: Settings → Secrets and variables → Actions → New repository secret: `NTFY_TOPIC` = that topic name.
 3. Actions tab → "Kalshi scan" → Run workflow → tick "Send a test notification".
