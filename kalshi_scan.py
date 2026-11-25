@@ -225,13 +225,15 @@ def scan_spreads(ev, min_vol=1000, min_spread=15):
 def selftest():
     """Run the live review on liquid markets; depth should be well above zero."""
     s = requests.Session()
-    ms = _get(s, "/markets?status=open&limit=1000").get("markets", [])
-    ms = [m for m in ms if not m["ticker"].startswith("KXMVE")]  # skip combo markets
+    evs = _get(s, "/events?status=open&limit=200&with_nested_markets=true").get("events", [])
+    ms = [m for e in evs for m in e.get("markets", []) if not m["ticker"].startswith("KXMVE")]
     ms = sorted(ms, key=lambda m: -num(m, "volume_24h"))[:3]
     if ms:
         import json
         print("RAW MARKET:", json.dumps(ms[0])[:1500])
         print("RAW BOOK:", json.dumps(_get(s, f"/markets/{ms[0]['ticker']}/orderbook"))[:1500])
+    if not ms:
+        print("SELFTEST FAILED: no markets to test"); sys.exit(1)
     bad = 0
     for m in ms:
         a, b = cents(m, "yes_ask"), cents(m, "yes_bid")
