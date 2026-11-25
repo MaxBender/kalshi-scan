@@ -163,10 +163,15 @@ def scan_brackets(ev, min_edge):
     return out
 
 
-def underlying(m):
-    """Group key for a market: last ticker segment with its trailing strike removed.
-    e.g. ...-DAL54 -> DAL, ...-DEN53 -> DEN, ...-T50 -> T, ...-MIA -> MIA."""
-    return re.sub(r"[\d.]+$", "", m["ticker"].split("-")[-1])
+def underlying(m, event_ticker=""):
+    """Group key for a market: the ticker after the event prefix, minus the trailing strike.
+    e.g. EV-DAL54 -> DAL, EV-T50 -> T, EV-MIA -> MIA, EV-DALJWILLIAMS33-16 -> DALJWILLIAMS33."""
+    t = m["ticker"]
+    if event_ticker and t.startswith(event_ticker + "-"):
+        t = t[len(event_ticker) + 1:]
+    else:
+        t = t.split("-", 2)[-1]
+    return re.sub(r"-?[\d.]+$", "", t)
 
 
 def scan_ladder(ev):
@@ -174,7 +179,7 @@ def scan_ladder(ev):
     groups = {}
     for m in active(ev.get("markets", [])):
         if m.get("strike_type") in ("greater", "greater_or_equal") and m.get("floor_strike") is not None:
-            groups.setdefault(underlying(m), []).append(m)
+            groups.setdefault(underlying(m, ev.get("event_ticker", "")), []).append(m)
     for ms in groups.values():
         out += _scan_ladder_group(ev, ms)
     return out
