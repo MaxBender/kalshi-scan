@@ -1,13 +1,5 @@
-scanned_at_utc: 2026-11-25T04:17:09Z
+scanned_at_utc: 2026-11-25T04:18:18Z
 status: success
 ---
-[BRACKET_BUY_ALL_YES] edge=7c  KXRPRESPRIMARY-28WA  Washington Republican presidential primary winner?
-    5 legs, sum asks=85c, w/ fees=93c
-[BRACKET_BUY_ALL_YES] edge=7c  KXRPRESPRIMARY-28VT  Vermont Republican presidential primary winner?
-    5 legs, sum asks=85c, w/ fees=93c
-[BRACKET_BUY_ALL_YES] edge=7c  KXRPRESPRIMARY-28SD  South Dakota Republican presidential primary winner?
-    5 legs, sum asks=85c, w/ fees=93c
-[BRACKET_BUY_ALL_YES] edge=7c  KXRPRESPRIMARY-28MA  Massachusetts Republican presidential primary winner?
-    5 legs, sum asks=85c, w/ fees=93c
-[BRACKET_BUY_ALL_YES] edge=7c  KXNEXTCPDSUPT-27JUL01  Who will be the next Chicago Police Superintendent?
-    3 legs, sum asks=88c, w/ fees=93c
+[BRACKET_BUY_ALL_YES] edge=5c  KXNEXTCOMMERCE-29  Who will be Trump's next Secretary of Commerce?
+    8 legs, sum asks=86c, w/ fees=95c, closes 2029-01-20
