@@ -101,6 +101,10 @@ def scan_ladder(ev):
           if m.get("strike_type") in ("greater", "greater_or_equal")
           and m.get("floor_strike") is not None]
     ms.sort(key=lambda m: float(m["floor_strike"]))
+    # A ladder needs distinct strikes; equal strikes usually mean different
+    # underlyings (e.g. one market per city), which are not comparable.
+    if len({float(m["floor_strike"]) for m in ms}) != len(ms):
+        return out
     for lo, hi in zip(ms, ms[1:]):
         hi_bid, lo_ask = cents(hi, "yes_bid"), cents(lo, "yes_ask")
         # Executable violation: sell higher strike at bid, buy lower strike at ask
