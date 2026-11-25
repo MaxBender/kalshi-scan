@@ -22,7 +22,7 @@ Notes:
     (ceil(0.07 * C * P * (1-P)) per order). Verify against current fee schedule.
   - This is a data tool, not trading advice.
 """
-import argparse, csv, math, re, sys, time
+import argparse, csv, datetime as dt, math, re, sys, time
 import requests
 
 BASE = "https://api.elections.kalshi.com/trade-api/v2"
@@ -161,6 +161,8 @@ def main():
     ap.add_argument("--min-edge", type=int, default=0, help="min edge in cents for arbs")
     ap.add_argument("--no-spreads", action="store_true")
     ap.add_argument("--csv")
+    ap.add_argument("--max-days", type=int, default=0,
+                    help="only flag markets closing within N days (0 = no limit)")
     ap.add_argument("--allow-huge", action="store_true",
                     help=f"keep flags with edge > {MAX_PLAUSIBLE_EDGE}c (usually artifacts)")
     ap.add_argument("--top", type=int, default=0, help="keep only the top N flags (0 = all)")
@@ -173,6 +175,13 @@ def main():
         hits += [h for h in scan_ladder(ev) if h[2] >= args.min_edge]
         if not args.no_spreads:
             hits += scan_spreads(ev)
+
+    if args.max_days:
+        cutoff = (dt.date.today() + dt.timedelta(days=args.max_days)).isoformat()
+        def soon(h):
+            m = re.search(r"closes (\d{4}-\d{2}-\d{2})", h[3])
+            return (not m) or m.group(1) <= cutoff
+        hits = [h for h in hits if h[0] == "WIDE_SPREAD" or soon(h)]
 
     if not args.allow_huge:
         hits = [h for h in hits if h[0] == "WIDE_SPREAD" or h[2] <= MAX_PLAUSIBLE_EDGE]
