@@ -28,6 +28,13 @@ import requests
 BASE = "https://api.elections.kalshi.com/trade-api/v2"
 MIN_EXHAUSTIVE_SUM = 85   # cents; bracket asks summing below this are treated as non-exhaustive
 MAX_PLAUSIBLE_EDGE = 25   # cents; bigger "edges" are almost always data artifacts
+CATCH_ALL = re.compile(r"\b(other|others|anyone else|someone else|none|no one|nobody|field|"
+                       r"none of the above|not listed)\b|-OTH\b|-OTHER\b", re.I)
+
+
+def closes(ms):
+    t = min((m.get("close_time") or "9999") for m in ms)
+    return t[:10] if t != "9999" else "?"
 
 
 def cents(m, side):
@@ -78,6 +85,11 @@ def scan_brackets(ev, min_edge):
     ms = active(ev.get("markets", []))
     if len(ms) < 2:
         return out
+    # Buying every YES only guarantees $1 if some listed outcome must happen.
+    # Require an explicit catch-all leg ("Other", "Someone else", "None", ...).
+    if not any(CATCH_ALL.search(" ".join(str(m.get(f) or "") for f in
+               ("yes_sub_title", "subtitle", "title", "ticker"))) for m in ms):
+        return out
     asks = [cents(m, "yes_ask") for m in ms]
     bids = [cents(m, "yes_bid") for m in ms]
     # Buy every YES: one must pay $1 (assumes outcomes are exhaustive!)
@@ -88,14 +100,14 @@ def scan_brackets(ev, min_edge):
         edge = 100 - cost
         if edge >= min_edge:
             out.append(("BRACKET_BUY_ALL_YES", ev, edge,
-                        f"{len(ms)} legs, sum asks={sum(asks)}c, w/ fees={cost}c"))
+                        f"{len(ms)} legs, sum asks={sum(asks)}c, w/ fees={cost}c, closes {closes(ms)}"))
     # Sell every YES at bids: you pay out $1 on exactly one
     if all(b and 0 < b < 100 for b in bids):
         take = sum(bids) - sum(fee_cents(b) for b in bids)
         edge = take - 100
         if edge >= min_edge:
             out.append(("BRACKET_SELL_ALL_YES", ev, edge,
-                        f"{len(ms)} legs, sum bids={sum(bids)}c, net of fees={take}c"))
+                        f"{len(ms)} legs, sum bids={sum(bids)}c, net of fees={take}c, closes {closes(ms)}"))
     return out
 
 
@@ -130,7 +142,7 @@ def _scan_ladder_group(ev, ms):
             edge = hi_bid - lo_ask - fee_cents(hi_bid) - fee_cents(lo_ask)
             out.append(("LADDER_INVERSION", ev, edge,
                         f">{hi['floor_strike']} bid {hi_bid}c vs >{lo['floor_strike']} ask {lo_ask}c "
-                        f"[{hi['ticker']} / {lo['ticker']}]"))
+                        f"[{hi['ticker']} / {lo['ticker']}] closes {closes([hi, lo])}"))
     return out
 
 
