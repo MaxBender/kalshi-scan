@@ -10,6 +10,10 @@ on:
         description: "Send a test notification even if nothing is flagged"
         type: boolean
         default: false
+      selftest:
+        description: "Only run the order-book self-test (no scan, no results commit)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -27,8 +31,13 @@ jobs:
 
       - run: pip install requests
 
+      - name: Self-test
+        if: inputs.selftest
+        run: python kalshi_scan.py --selftest
+
       - name: Run scanner
         id: scan
+        if: ${{ !inputs.selftest }}
         run: |
           python kalshi_scan.py --min-edge 3 --no-spreads --max-days 90 --min-profit 10 --top 10 > flags.txt
           cat flags.txt
@@ -36,7 +45,7 @@ jobs:
           if grep -q "SIGNIFICANT" flags.txt; then echo "significant=true" >> "$GITHUB_OUTPUT"; else echo "significant=false" >> "$GITHUB_OUTPUT"; fi
 
       - name: Save results for Claude
-        if: always()
+        if: ${{ always() && !inputs.selftest }}
         run: |
           mkdir -p results
           {

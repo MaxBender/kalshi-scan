@@ -214,6 +214,25 @@ def scan_spreads(ev, min_vol=1000, min_spread=15):
     return out
 
 
+def selftest():
+    """Run the live review on liquid markets; depth should be well above zero."""
+    s = requests.Session()
+    ms = _get(s, "/markets?status=open&limit=1000").get("markets", [])
+    ms = sorted(ms, key=lambda m: -(m.get("volume_24h") or 0))[:3]
+    bad = 0
+    for m in ms:
+        a, b = cents(m, "yes_ask"), cents(m, "yes_bid")
+        book = _get(s, f"/markets/{m['ticker']}/orderbook")
+        print(f"{m['ticker']}  vol24h={m.get('volume_24h')}  bid={b} ask={a}")
+        print(f"  orderbook keys: {list(book.keys())} / {list((book.get('orderbook') or {}).keys())}")
+        for action, price in (("buy_yes", a), ("sell_yes", b)):
+            ok, notes, size = review(s, [(m["ticker"], action, price)])
+            print(f"  {action} @ {price}c -> size {size:g}, {'PASS' if ok else 'FAIL'}: {'; '.join(notes)}")
+            bad += size == 0
+    print("SELFTEST", "FAILED: zero depth on liquid markets - check order book parsing" if bad else "OK")
+    sys.exit(1 if bad else 0)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--min-edge", type=int, default=0, help="min edge in cents for arbs")
@@ -224,7 +243,12 @@ def main():
     ap.add_argument("--top", type=int, default=0, help="keep only the top N flags (0 = all)")
     ap.add_argument("--min-profit", type=float, default=10,
                     help="dollars of estimated profit (edge x executable size) to mark SIGNIFICANT")
+    ap.add_argument("--selftest", action="store_true",
+                    help="review the 3 highest-volume open markets to verify order-book parsing")
     args = ap.parse_args()
+
+    if args.selftest:
+        return selftest()
 
     events = fetch_events()
     hits = []
