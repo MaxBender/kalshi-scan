@@ -110,14 +110,15 @@ def review(session, legs):
     for ticker, action, price in legs:
         try:
             m = _get(session, f"/markets/{ticker}")["market"]
-            book = _get(session, f"/markets/{ticker}/orderbook").get("orderbook") or {}
+            raw = _get(session, f"/markets/{ticker}/orderbook")
+            book = raw.get("orderbook") or raw.get("orderbook_fp") or {}
         except Exception as e:
             return False, [f"{ticker}: lookup failed ({e})"], 0
         if m.get("status") not in ("active", "open"):
             ok = False; notes.append(f"{ticker} status {m.get('status')}")
         if (m.get("close_time") or "9999") <= now:
             ok = False; notes.append(f"{ticker} past close time")
-        if not (m.get("volume_24h") or 0):
+        if not num(m, "volume_24h"):
             ok = False; notes.append(f"{ticker} no trades in 24h")
         if action == "buy_yes":   # buying YES at a = hitting NO bids at 100-a or better
             depth = sum(q for p, q in _levels(book, "no") if p >= 100 - price)
@@ -216,9 +217,9 @@ def scan_spreads(ev, min_vol=1000, min_spread=15):
     out = []
     for m in active(ev.get("markets", [])):
         b, a = cents(m, "yes_bid"), cents(m, "yes_ask")
-        if b and a and (m.get("volume") or 0) >= min_vol and a - b >= min_spread:
+        if b and a and num(m, "volume") >= min_vol and a - b >= min_spread:
             out.append(("WIDE_SPREAD", ev, a - b,
-                        f"{m['ticker']} bid {b}c / ask {a}c, vol {m.get('volume')}", []))
+                        f"{m['ticker']} bid {b}c / ask {a}c, vol {num(m, 'volume'):g}", []))
     return out
 
 
@@ -227,18 +228,18 @@ def selftest():
     s = requests.Session()
     evs = _get(s, "/events?status=open&limit=200&with_nested_markets=true").get("events", [])
     ms = [m for e in evs for m in e.get("markets", []) if not m["ticker"].startswith("KXMVE")]
+    ms = [m for m in ms if (cents(m, "yes_bid") or 0) > 0 and (cents(m, "yes_ask") or 100) < 100]
     ms = sorted(ms, key=lambda m: -num(m, "volume_24h"))[:3]
     if ms:
         import json
-        print("RAW MARKET:", json.dumps(ms[0])[:1500])
-        print("RAW BOOK:", json.dumps(_get(s, f"/markets/{ms[0]['ticker']}/orderbook"))[:1500])
+        print("market fields:", sorted(k for k in ms[0] if "volume" in k or "_bid" in k or "_ask" in k))
     if not ms:
         print("SELFTEST FAILED: no markets to test"); sys.exit(1)
     bad = 0
     for m in ms:
         a, b = cents(m, "yes_ask"), cents(m, "yes_bid")
-        book = _get(s, f"/markets/{m['ticker']}/orderbook")
-        print(f"{m['ticker']}  vol24h={m.get('volume_24h')}  bid={b} ask={a}")
+        book = _get(s, f"/markets/{m['ticker']}/orderbook")  # noqa
+        print(f"{m['ticker']}  vol24h={num(m, 'volume_24h'):g}  bid={b} ask={a}")
         print(f"  orderbook keys: {list(book.keys())} / {list((book.get('orderbook') or {}).keys())}")
         for action, price in (("buy_yes", a), ("sell_yes", b)):
             ok, notes, size = review(s, [(m["ticker"], action, price)])
