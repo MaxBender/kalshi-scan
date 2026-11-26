@@ -1,3 +1,6 @@
-scanned_at_utc: 2026-11-26T08:52:20Z
+scanned_at_utc: 2026-11-26T19:16:07Z
 status: success
 ---
+[BRACKET_BUY_ALL_YES] edge=4c  KXNETFLIXRANKSHOWGLOBAL2-26NOV30  #2 Global Netflix Show this week?
+    10 legs, sum asks=85c, w/ fees=96c, closes 2026-12-01
+    REVIEW PASSED: executable size ~11.39 contracts; est. profit ~$0.46
